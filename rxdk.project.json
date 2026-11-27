@@ -1,0 +1,78 @@
+{
+  "name": "ManicMinerX",
+  "defaultConfiguration": "Release",
+  "sources": [
+    "src/main.c",
+    "src/platform_rxdk.cpp",
+    "src/hiscore.c",
+    "src/zx.c",
+    "src/mm_game48.c",
+    "src/mm_game128.c",
+    "src/mm_font.c",
+    "src/ay.c",
+    "src/st_player.c",
+    "src/mm128_load.c"
+  ],
+  "projectReferences": [
+    "../../RXDK-SDL3"
+  ],
+  "defines": [
+    "_XBOX",
+    "RXDK_PORT"
+  ],
+  "compileFlags": [
+    "-O2",
+    "-Wall",
+    "-Wno-pragma-pack"
+  ],
+  "deployPaths": [
+    "datafiles"
+  ],
+  "createIso": true,
+  "configurations": {
+    "Debug": {
+      "configuration": "debug",
+      "libraries": [
+        "libd3d8d.lib",
+        "libdsoundd.lib",
+        "libxapid.lib",
+        "libcd.lib",
+        "libcppd.lib",
+        "libkerneld.lib",
+        "libcompatd.lib"
+      ],
+      "outputDir": "out/Debug",
+      "imageBuild": {
+        "stackSize": 262144,
+        "debug": true,
+        "noLogo": true,
+        "noLibWarn": true,
+        "testId": "0x4D4D0058",
+        "testName": "ManicMinerX",
+        "testVersion": "4096"
+      }
+    },
+    "Release": {
+      "configuration": "release",
+      "libraries": [
+        "libd3d8.lib",
+        "libdsound.lib",
+        "libxapi.lib",
+        "libc.lib",
+        "libcpp.lib",
+        "libkernel.lib",
+        "libcompat.lib"
+      ],
+      "outputDir": "out/Release",
+      "imageBuild": {
+        "stackSize": 262144,
+        "debug": false,
+        "noLogo": true,
+        "noLibWarn": true,
+        "testId": "0x4D4D0058",
+        "testName": "ManicMinerX",
+        "testVersion": "4096"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+out/
+bin/
+obj/
+*.xbe
+*.iso
+*.exe
+*.pdb
+*.map
+# Game data: copyrighted, never commit
+*.bin
+*.rom
+*.ROM
+*.tap
+*.tzx
+*.z80
+*.sna
