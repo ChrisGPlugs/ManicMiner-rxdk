@@ -22,6 +22,8 @@ console you can also put them next to `default.xbe`; that folder is checked firs
 | `ManicMiner128.tap` | "Manic Miner 128 by Mihai Novitchi and Bob Fossil - Software Projects version", renamed (the original name is over FATX's 42 characters) |
 | `48.rom` | optional: 16K Spectrum ROM, for the original character set (else a public-domain font) |
 
+The dashboard title and save images (`artwork/TITLEIMAGE.XBX`, `SAVEIMAGE.XBX`) are made from `artwork/titleimage-source.png` (the pixel-art picture from the nxdk repo) with `tools/make-titleimage.ps1`.
+
 **Don't publish an ISO built with data files in `datafiles/`.** Release zips contain only the XBE.
 
 ## Building
@@ -31,7 +33,7 @@ pwsh -File tools/rxdk-run.ps1 -Project ports/manicminer-rxdk -NoRun             
 pwsh -File tools/rxdk-run.ps1 -Project ports/manicminer-rxdk -Seconds 60 -Until 'MM READY'  # build + boot in xemu
 ```
 
-Output: `out/Release/ManicMinerX.xbe` and `out/Release/XISO/ManicMinerX.iso`. After changing what's in
+Output: `out/Release/ManicMinerX.xbe` (copy it to the console as `default.xbe`) and, for xemu, `out/Release/XISO/ManicMinerX.iso`. After changing what's in
 `datafiles/`, delete `out/Release` (the build doesn't notice).
 
 ## Controls

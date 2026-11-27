@@ -49,7 +49,9 @@
         "noLibWarn": true,
         "testId": "0x4D4D0058",
         "testName": "ManicMinerX",
-        "testVersion": "4096"
+        "testVersion": "4096",
+        "titleImage": "artwork/TITLEIMAGE.XBX",
+        "defaultSaveImage": "artwork/SAVEIMAGE.XBX"
       }
     },
     "Release": {
@@ -71,7 +73,9 @@
         "noLibWarn": true,
         "testId": "0x4D4D0058",
         "testName": "ManicMinerX",
-        "testVersion": "4096"
+        "testVersion": "4096",
+        "titleImage": "artwork/TITLEIMAGE.XBX",
+        "defaultSaveImage": "artwork/SAVEIMAGE.XBX"
       }
     }
   }
