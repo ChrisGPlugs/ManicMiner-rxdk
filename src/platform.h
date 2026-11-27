@@ -31,7 +31,7 @@ void plat_present(const uint32_t *pixels);
  * of a 16:9 screen (no change on a 4:3 one). */
 void plat_set_wide(int wide);
 
-/* Description of the mode in use, e.g. "720p 4:3: picture 960x720 sharp". */
+/* The mode in use and the picture on it, e.g. "720p  4:3  960x720  sharp". */
 const char *plat_video_mode_name(void);
 
 /* Wall-clock microseconds. */

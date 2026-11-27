@@ -86,6 +86,9 @@ static int wide_on;
 static int aspect_msg_frames;
 #define ASPECT_MSG_FRAMES 100
 
+static int in_chooser;               /* the chooser is on screen */
+#define MODE_LABEL_FRAMES 250        /* 5 s */
+
 static void aspect_load(void)
 {
     char path[64], buf[8] = { 0 };
@@ -513,11 +516,22 @@ static void present(void)
     int msg = aspect_msg_frames > 0;
     if (msg) aspect_msg_frames--;
     int clear_msg = msg && aspect_msg_frames == 0;
-    if (!screen_changed(flash) && !diag_on && !msg && !clear_msg) return;
+    /* The video mode is named in the top border on the chooser, and for
+     * the first five seconds when a game starts without one. */
+    static int last_mode_label;
+    int mode_label = in_chooser || frame_count < MODE_LABEL_FRAMES;
+    int label_changed = mode_label != last_mode_label;
+    last_mode_label = mode_label;
+    if (!screen_changed(flash) && !diag_on && !msg && !clear_msg && !label_changed) return;
     uint64_t t0 = plat_now_us();
     zx_render(frame_pixels, ZX_SCREEN_W, flash);
     if (diag_on) draw_diag(frame_pixels, ZX_SCREEN_W, 16, 16);
-    if (msg && !clear_msg) {
+    if (mode_label) {
+        char label[48];
+        snprintf(label, sizeof label, " %s ", plat_video_mode_name());
+        int x = (ZX_SCREEN_W - 8 * (int)strlen(label)) / 2;
+        draw_text(frame_pixels, ZX_SCREEN_W, x < 0 ? 0 : x, 8, label, 0xFFFFFFFF, 0xFF0000A0);
+    } else if (msg && !clear_msg) {
         const char *label = wide_on ? " 16:9 " : " 4:3 ";
         int x = (ZX_SCREEN_W - 8 * (int)strlen(label)) / 2;
         draw_text(frame_pixels, ZX_SCREEN_W, x, 8, label, 0xFFFFFFFF, 0xFF0000A0);
@@ -798,6 +812,7 @@ static int launcher(void)
     ui_attr_row(21, 0x46);
     ui_up = ui_down = ui_select = 0;
     screen_shown("chooser");
+    in_chooser = 1;
 
     for (;;) {
         /* The Blue Danube, as on the title screen. */
@@ -910,6 +925,7 @@ int main(int argc, char **argv)
         memcpy(mem + 0x4000, image48 + 0x4000, 0xC000);
         zx_set_model(ZX_MODEL_48K);
         choose128 = launcher();
+        in_chooser = 0;
     }
     v128 = choose128;
     game_running = 1;

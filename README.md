@@ -74,6 +74,9 @@ cheat was used.
   | 480p / 480i, dashboard set to widescreen | 480×480 anamorphic, filtered | 640×480, sharp |
   | 576i (PAL 50 Hz) | 640×576, filtered | same |
 
+  The chooser names the mode and picture in the top border (e.g. `720p  4:3  960x720  sharp`); when a
+  game starts without the chooser it is shown for the first five seconds.
+
 * The debug output prints `MM READY`, `MM SCREEN <name>` and every ~10 s an `MM STATS` line (speed,
   audio rate, queue, gaps, ULA contention).
 

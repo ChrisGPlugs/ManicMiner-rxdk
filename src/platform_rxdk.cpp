@@ -251,7 +251,7 @@ void plat_set_wide(int wide)
 {
     g_stretch = wide != 0;
     computePicture();
-    SDL_snprintf(g_modeName, sizeof(g_modeName), "%d%c %s: picture %dx%d %s", g_height,
+    SDL_snprintf(g_modeName, sizeof(g_modeName), "%d%c  %s  %dx%d  %s", g_height,
                  g_progressive ? 'p' : 'i', g_stretch ? "16:9" : "4:3", (int)g_picture.w,
                  (int)g_picture.h, g_sharp ? "sharp" : "filtered");
     plat_log("MM: %s\n", g_modeName);
