@@ -42,6 +42,7 @@ static int v128;
 /* Manic Miner 128 addresses the front end needs (see mm_mem.h, -DMM128). */
 #define MM128_PatchLivesDec   35147
 #define MM128_MenuLivesYesNo  38004
+#define MM128_MenuText        37986    /* "1 Infinite lives: NO ..." */
 
 #define AUDIO_RATE   48000
 
@@ -87,6 +88,17 @@ static int aspect_msg_frames;
 #define ASPECT_MSG_FRAMES 100
 
 static int in_chooser;               /* the chooser is on screen */
+
+/* Back during play asks END GAME? first (1 = asking, 2 = yes, 3 = no); the
+ * game is frozen meanwhile. On yes, SHIFT+SPACE is held for quit_frames. */
+static int confirm_quit, quit_frames;
+
+/* Manic Miner 128's options menu: Y (key 1) in play opens it, Start (key 4)
+ * closes it. While it is open, LT / RT are its keys 2 (air) and 3 (music);
+ * otherwise they jump left / right. The menu has no flag of its own, so it
+ * also has to be on screen: its box is 7 rows x 24 cells of attribute 71
+ * from row 2, column 4. If Y didn't open it, LT / RT stay jumps. */
+static int mm128_menu;
 #define MODE_LABEL_FRAMES 250        /* 5 s */
 
 static void aspect_load(void)
@@ -332,6 +344,46 @@ static void run_macros(void)
      * teleport requested on the title screen or during the game-over
      * sequence). */
     if (teleport_pending && ++teleport_frames > 25) teleport_pending = 0;
+    if (quit_frames > 0) {
+        quit_frames--;
+        set_bit(macro_keys, ZX_ROW_SHIFT_V, 0, 1);         /* SHIFT+SPACE: quit */
+        set_bit(macro_keys, ZX_ROW_SPACE_B, 0, 1);
+    }
+}
+
+/* In a game, past the title screen and the demo. */
+static int in_play(void)
+{
+    return game_running && !mm_in_title && mem[GameModeIndicator] == 0;
+}
+
+/* The options menu names the pad buttons instead of keys 1-4. Each label
+ * keeps the original's length, because MenuToggle writes YES / NO at fixed
+ * places in this text (MenuLivesYesNo, MenuAirYesNo, MenuMusicYesNo). */
+static void mm128_menu_labels(void)
+{
+    static const struct { uint16_t at; const char *was, *now; } lab[] = {
+        { MM128_MenuText,      "1 Infinite lives: ", "Y Infinite lives: " },
+        { MM128_MenuText + 21, "2 Infinite air: ",   "LT Endless air: "   },
+        { MM128_MenuText + 40, "3 Music: ",          "RT Tune: "          },
+        { MM128_MenuText + 52, "4 Resume game",      "ST Resume    "      },
+    };
+    for (unsigned i = 0; i < sizeof lab / sizeof lab[0]; i++) {
+        size_t n = strlen(lab[i].was);
+        if (memcmp(mem + lab[i].at, lab[i].was, n)) {
+            plat_log("MM: menu text %u not as expected, left alone\n", i);
+            continue;
+        }
+        memcpy(mem + lab[i].at, lab[i].now, n);
+    }
+}
+
+static int mm128_menu_on_screen(void)
+{
+    for (int r = 0; r < 7; r++)
+        for (int c = 0; c < 24; c++)
+            if (mem[22596 + r * 32 + c] != 71) return 0;
+    return 1;
 }
 
 static void pad_button(int button, int down)
@@ -340,6 +392,15 @@ static void pad_button(int button, int down)
      * Back don't act on the game. Releases always go through. */
     if (down && triggers_held && (button == SDL_GAMEPAD_BUTTON_START || button == SDL_GAMEPAD_BUTTON_BACK))
         return;
+    if (confirm_quit) {
+        if (down) {
+            if (button == SDL_GAMEPAD_BUTTON_SOUTH) confirm_quit = 2;
+            else if (button == SDL_GAMEPAD_BUTTON_EAST || button == SDL_GAMEPAD_BUTTON_BACK) confirm_quit = 3;
+        }
+        return;
+    }
+    if (v128 && down && button == SDL_GAMEPAD_BUTTON_NORTH && in_play()) mm128_menu = 1;
+    if (down && button == SDL_GAMEPAD_BUTTON_START) mm128_menu = 0;
     switch (button) {
     case SDL_GAMEPAD_BUTTON_SOUTH:                             /* A */
     case SDL_GAMEPAD_BUTTON_EAST:                              /* B */
@@ -363,6 +424,12 @@ static void pad_button(int button, int down)
         if (down) diag_on = !diag_on;                      /* diagnostics */
         break;
     case SDL_GAMEPAD_BUTTON_BACK:
+        if (mm128_menu && mm128_menu_on_screen())          /* MM128 menu: no quit there */
+            break;
+        if (in_play()) {                                   /* ask first */
+            if (down) { confirm_quit = 1; memset(pad_keys, 0, sizeof pad_keys); }
+            break;
+        }
         set_bit(pad_keys, ZX_ROW_SHIFT_V, 0, down);        /* SHIFT+SPACE: quit */
         set_bit(pad_keys, ZX_ROW_SPACE_B, 0, down);
         if (down && chooser_available && game_running &&
@@ -395,17 +462,23 @@ static void read_pad_axes(void)
     int lt = pad && SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 16000;
     int rt = pad && SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
     triggers_held = lt && rt;
-    if (v128 && pad) {
-        /* Menu options 2 (air) and 3 (music) on the triggers. */
-        set_bit(pad_keys, ZX_ROW_1_5, 1, lt);
-        set_bit(pad_keys, ZX_ROW_1_5, 2, rt);
-    }
+    if (mm128_menu && (!v128 || !in_play())) mm128_menu = 0;
+    int menu = mm128_menu && mm128_menu_on_screen();
+    /* MM128 menu open: options 2 (air) and 3 (music) on the triggers. */
+    set_bit(pad_keys, ZX_ROW_1_5, 1, menu && lt);
+    set_bit(pad_keys, ZX_ROW_1_5, 2, menu && rt);
     if (pad) {
         int x = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
         left  = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) || x < -12000;
         right = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || x > 12000;
         fire  = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH) ||
                 SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST);
+        /* LT / RT: jump left / right (direction + jump together). Both held
+         * is the start of the IGR combo, so that does nothing. */
+        if (in_play() && !menu && lt != rt) {            /* not on the title / demo */
+            if (lt) left = 1; else right = 1;
+            fire = 1;
+        }
         int y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
         int dir = y < -16000 ? -1 : (y > 16000 ? 1 : 0);
         if (dir != ui_stick_y) { if (dir < 0) ui_up = 1; if (dir > 0) ui_down = 1; }
@@ -522,10 +595,23 @@ static void present(void)
     int mode_label = in_chooser || frame_count < MODE_LABEL_FRAMES;
     int label_changed = mode_label != last_mode_label;
     last_mode_label = mode_label;
-    if (!screen_changed(flash) && !diag_on && !msg && !clear_msg && !label_changed) return;
+    static int last_confirm;
+    int confirm_changed = (confirm_quit == 1) != last_confirm;
+    last_confirm = confirm_quit == 1;
+    if (!screen_changed(flash) && !diag_on && !msg && !clear_msg && !label_changed && !confirm_changed) return;
     uint64_t t0 = plat_now_us();
     zx_render(frame_pixels, ZX_SCREEN_W, flash);
     if (diag_on) draw_diag(frame_pixels, ZX_SCREEN_W, 16, 16);
+    if (confirm_quit == 1) {
+        static const char *const box[3] = {
+            "                        ",
+            " END GAME?  A=YES  B=NO ",
+            "                        ",
+        };
+        for (int i = 0; i < 3; i++)
+            draw_text(frame_pixels, ZX_SCREEN_W, (ZX_SCREEN_W - 8 * 24) / 2, ZX_SCREEN_H / 2 - 12 + i * 8,
+                      box[i], 0xFFFFFFFF, 0xFFA00000);
+    }
     if (mode_label) {
         char label[48];
         snprintf(label, sizeof label, " %s ", plat_video_mode_name());
@@ -612,6 +698,25 @@ static void hs_game_over(void)
     plat_log("MM: game over, new high score %.6s %s\n", (const char *)hs_best, ok ? "saved" : "NOT saved");
 }
 
+/* END GAME? asked: hold the game still (sound silent, picture kept) until
+ * A (yes) or B / Back (no), then until those buttons are let go, so the
+ * answer never reaches the game as a jump. */
+static void confirm_loop(void)
+{
+    static const int16_t silence[2 * 960];
+    plat_log("MM SCREEN endgame?\n");
+    while (confirm_quit == 1) { audio_submit(silence, 960); poll_input(); present(); pace(); }
+    int yes = confirm_quit == 2;
+    while (pad && (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH) ||
+                   SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST) ||
+                   SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK))) {
+        audio_submit(silence, 960); poll_input(); present(); pace();
+    }
+    confirm_quit = 0;
+    if (yes) quit_frames = 10;
+    plat_log("MM: end game? %s\n", yes ? "yes" : "no");
+}
+
 static void frame_hook(void)
 {
     render_audio();
@@ -621,6 +726,7 @@ static void frame_hook(void)
         back_to_chooser = 0;
         longjmp(chooser_jmp, 1);             /* leave the engine for the chooser */
     }
+    if (confirm_quit) confirm_loop();
     /* If the audio queue is running low, the game must catch up: emulate
      * this frame without drawing it. Sound must never wait for pictures. */
     if (audio_ok && frame_count > 50 && audio_queued_ms() < AUDIO_QUEUE_LOW_MS)
@@ -942,6 +1048,7 @@ int main(int argc, char **argv)
         zx_set_model(ZX_MODEL_128K);
         ay_init(&ay, AY_CLOCK_128K, AUDIO_RATE);
         memcpy(mem + 0x4000, image128 + 0x4000, 0xC000);   /* keep our ROM area */
+        mm128_menu_labels();
         hs_begin_game();
         screen_shown("game128");
         mm_run128();                                        /* never returns */

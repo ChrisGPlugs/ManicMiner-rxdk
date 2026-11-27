@@ -42,11 +42,11 @@ Output: `out/Release/ManicMinerX.xbe` (copy it to the console as `default.xbe`) 
 |---|---|
 | D-pad / left stick ← → | Walk |
 | A or B | Jump |
+| LT / RT | In play: jump left / right (128, with the options menu open: infinite air / music on-off) |
 | Start | Start game (128: also closes the options menu) |
 | Y | 48K: in-game music on/off. 128: options menu / infinite lives |
-| LT / RT | 128, in the menu: infinite air / music on-off |
 | X | Pause |
-| Back | Quit to title; twice on a title screen: back to the chooser |
+| Back | In play: END GAME? (A yes, B no). Twice on a title screen or demo: back to the chooser |
 | White | Types the cheat code (6031769 / TYPEWRITER) |
 | White / Black, cheat on | Teleport to the previous / next cavern |
 | Left stick click | Diagnostics overlay |
