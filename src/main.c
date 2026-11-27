@@ -79,6 +79,45 @@ static const char *pending_screen;
 static int ready_logged;
 static void screen_shown(const char *name) { pending_screen = name; }
 
+/* Picture shape, toggled with the right stick click and kept in the save
+ * folder (U:\ASPECT.TXT, "4:3" or "16:9"). After a change the new shape
+ * is named at the top of the screen for two seconds. */
+static int wide_on;
+static int aspect_msg_frames;
+#define ASPECT_MSG_FRAMES 100
+
+static int in_chooser;               /* the chooser is on screen */
+#define MODE_LABEL_FRAMES 250        /* 5 s */
+
+static void aspect_load(void)
+{
+    char path[64], buf[8] = { 0 };
+    snprintf(path, sizeof path, "%sASPECT.TXT", plat_save_dir());
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    wide_on = !strncmp(buf, "16:9", 4);
+}
+
+static void aspect_save(void)
+{
+    char path[64];
+    snprintf(path, sizeof path, "%sASPECT.TXT", plat_save_dir());
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    fputs(wide_on ? "16:9" : "4:3", f);
+    if (fclose(f) == 0) plat_commit_file(path);
+}
+
+static void aspect_toggle(void)
+{
+    wide_on = !wide_on;
+    plat_set_wide(wide_on);
+    aspect_save();
+    aspect_msg_frames = ASPECT_MSG_FRAMES;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Audio output                                                             */
 /* ------------------------------------------------------------------------ */
@@ -317,6 +356,9 @@ static void pad_button(int button, int down)
     case SDL_GAMEPAD_BUTTON_WEST:                              /* X */
         set_bit(pad_keys, ZX_ROW_A_G, 0, down);            /* A: pause */
         break;
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
+        if (down) aspect_toggle();                         /* 4:3 <-> 16:9 */
+        break;
     case SDL_GAMEPAD_BUTTON_LEFT_STICK:
         if (down) diag_on = !diag_on;                      /* diagnostics */
         break;
@@ -470,10 +512,30 @@ static void draw_diag(uint32_t *dst, int pitch, int x0, int y0)
 static void present(void)
 {
     int flash = (int)((frame_count >> 4) & 1);
-    if (!screen_changed(flash) && !diag_on) return;
+    /* The aspect label is drawn while it shows, plus once more to clear it. */
+    int msg = aspect_msg_frames > 0;
+    if (msg) aspect_msg_frames--;
+    int clear_msg = msg && aspect_msg_frames == 0;
+    /* The video mode is named in the top border on the chooser, and for
+     * the first five seconds when a game starts without one. */
+    static int last_mode_label;
+    int mode_label = in_chooser || frame_count < MODE_LABEL_FRAMES;
+    int label_changed = mode_label != last_mode_label;
+    last_mode_label = mode_label;
+    if (!screen_changed(flash) && !diag_on && !msg && !clear_msg && !label_changed) return;
     uint64_t t0 = plat_now_us();
     zx_render(frame_pixels, ZX_SCREEN_W, flash);
     if (diag_on) draw_diag(frame_pixels, ZX_SCREEN_W, 16, 16);
+    if (mode_label) {
+        char label[48];
+        snprintf(label, sizeof label, " %s ", plat_video_mode_name());
+        int x = (ZX_SCREEN_W - 8 * (int)strlen(label)) / 2;
+        draw_text(frame_pixels, ZX_SCREEN_W, x < 0 ? 0 : x, 8, label, 0xFFFFFFFF, 0xFF0000A0);
+    } else if (msg && !clear_msg) {
+        const char *label = wide_on ? " 16:9 " : " 4:3 ";
+        int x = (ZX_SCREEN_W - 8 * (int)strlen(label)) / 2;
+        draw_text(frame_pixels, ZX_SCREEN_W, x, 8, label, 0xFFFFFFFF, 0xFF0000A0);
+    }
     plat_present(frame_pixels);
     diag_draw_us = (unsigned)((diag_draw_us * 9 + (unsigned)(plat_now_us() - t0)) / 10);
     if (pending_screen) {
@@ -750,6 +812,7 @@ static int launcher(void)
     ui_attr_row(21, 0x46);
     ui_up = ui_down = ui_select = 0;
     screen_shown("chooser");
+    in_chooser = 1;
 
     for (;;) {
         /* The Blue Danube, as on the title screen. */
@@ -791,6 +854,8 @@ int main(int argc, char **argv)
     }
     if (!plat_video_init(ZX_SCREEN_W, ZX_SCREEN_H)) plat_exit();
 
+    aspect_load();
+    if (wide_on) plat_set_wide(1);
     audio_open();
 
     {
@@ -860,6 +925,7 @@ int main(int argc, char **argv)
         memcpy(mem + 0x4000, image48 + 0x4000, 0xC000);
         zx_set_model(ZX_MODEL_48K);
         choose128 = launcher();
+        in_chooser = 0;
     }
     v128 = choose128;
     game_running = 1;

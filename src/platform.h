@@ -27,7 +27,11 @@ int  plat_video_init(int src_w, int src_h);
 /* Show a frame (src_w x src_h, pitch = src_w pixels). Waits for vblank. */
 void plat_present(const uint32_t *pixels);
 
-/* Description of the mode in use, e.g. "1280x720 (picture 960x720 3x)". */
+/* 0: show the picture at 4:3 (the default). 1: stretch it to the full width
+ * of a 16:9 screen (no change on a 4:3 one). */
+void plat_set_wide(int wide);
+
+/* The mode in use and the picture on it, e.g. "720p  4:3  960x720  sharp". */
 const char *plat_video_mode_name(void);
 
 /* Wall-clock microseconds. */
