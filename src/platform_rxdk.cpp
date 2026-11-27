@@ -3,10 +3,11 @@
 // Video: SDL creates the full-screen window and owns the console's Direct3D 8
 // device (published as a window property). Each frame the 320x240 Spectrum
 // picture (screen plus border) is copied into a linear texture and drawn as
-// a 4:3 quad. Where the picture is a whole multiple of 240 lines (480 = 2x,
-// 720p = 3x) it is drawn with point sampling, so the pixels stay sharp;
-// otherwise it is filtered. This replaces the nxdk port's direct writes to
-// the framebuffer.
+// a quad: at 4:3, or stretched to the full width of a 16:9 screen
+// (plat_set_wide). Where the picture is a whole multiple of 320x240 it is
+// drawn with point sampling, so the pixels stay sharp; otherwise it is
+// filtered. On 1080i it is drawn 960 lines high (4x) so it stays sharp.
+// This replaces the nxdk port's direct writes to the framebuffer.
 //
 // If the device is not there (it always is on the console), SDL's renderer
 // is used instead.
@@ -27,6 +28,10 @@ char          g_modeName[96] = "none";
 int           g_width = 0, g_height = 0;
 int           g_srcW = 0, g_srcH = 0;
 SDL_FRect     g_picture = { 0, 0, 0, 0 };
+bool          g_wideScreen = false;   // the screen is 16:9 (HD, or SD set to widescreen)
+bool          g_progressive = false;
+bool          g_stretch = false;      // fill the width instead of 4:3
+bool          g_sharp = false;        // whole-number scale: point sampling
 
 D3DDevice*    g_device = NULL;
 D3DTexture*   g_textures[2] = { NULL, NULL };
@@ -49,15 +54,16 @@ const SDL_DisplayMode* findMode(SDL_DisplayMode** modes, int count, int w, int h
     return NULL;
 }
 
-// 720p first (the picture is exactly 3x there), then standard definition
-// (480 = 2x; 576 on 50 Hz PAL), then 1080i. The console only lists the
-// modes its AV cable and dashboard settings allow.
+// The best mode the dashboard allows: 720p, then 1080i, then standard
+// definition (480 lines, progressive when 480p is enabled; 576 on 50 Hz
+// PAL). The console only lists the modes its AV cable and dashboard
+// settings allow.
 bool pickMode(SDL_DisplayMode* out)
 {
     int count = 0;
     SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(SDL_GetPrimaryDisplay(), &count);
     if (!modes) return false;
-    static const int order[][2] = { { 1280, 720 }, { 640, 480 }, { 640, 576 }, { 1920, 1080 } };
+    static const int order[][2] = { { 1280, 720 }, { 1920, 1080 }, { 640, 480 }, { 640, 576 } };
     const SDL_DisplayMode* m = NULL;
     for (unsigned i = 0; !m && i < SDL_arraysize(order); i++)
         m = findMode(modes, count, order[i][0], order[i][1]);
@@ -66,23 +72,26 @@ bool pickMode(SDL_DisplayMode* out)
     return m != NULL;
 }
 
-// 4:3 picture on this mode. HD modes are 16:9, and so is SD when the
-// dashboard is set to widescreen; plain SD is a 4:3 screen whatever its
-// pixel count, so the picture fills it.
+// Where the picture goes on this mode. HD modes are 16:9, and so is SD when
+// the dashboard is set to widescreen (anamorphic: same 640 pixels, wider
+// pixels). Plain SD is a 4:3 screen, so the picture fills it either way.
+// 4:3 takes the middle three quarters of a 16:9 screen; stretched takes all
+// of it. If the height isn't a whole multiple of 240 but one close below it
+// is (1080 -> 960), use that so the pixels stay sharp.
 void computePicture()
 {
-    const bool wide = g_height >= 720 || (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN);
+    float h = (float)g_height;
+    const int k = g_srcH ? g_height / g_srcH : 0;
+    if (k >= 2 && g_height % g_srcH != 0 && k * g_srcH * 100 >= g_height * 85)
+        h = (float)(k * g_srcH);
     float w = (float)g_width;
-    if (wide) w = (float)(g_width * 3 / 4);
+    if (g_wideScreen && !g_stretch) w = (float)(g_width * 3 / 4);
+    if (!g_stretch) w = (float)(int)(w * h / g_height + 0.5f);   // keep 4:3 when h shrank
     g_picture.w = w;
-    g_picture.h = (float)g_height;
+    g_picture.h = h;
     g_picture.x = (float)(int)((g_width - w) / 2);
-    g_picture.y = 0;
-}
-
-bool integerScale()
-{
-    return g_srcH && g_height % g_srcH == 0 && (int)g_picture.w == g_srcW * (g_height / g_srcH);
+    g_picture.y = (float)(int)((g_height - h) / 2);
+    g_sharp = ((int)w % g_srcW == 0) && ((int)h % g_srcH == 0);
 }
 
 bool initD3D()
@@ -113,9 +122,6 @@ bool initD3D()
     g_device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
     g_device->SetTextureStageState(0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
     g_device->SetTextureStageState(0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
-    const DWORD filter = integerScale() ? D3DTEXF_POINT : D3DTEXF_LINEAR;
-    g_device->SetTextureStageState(0, D3DTSS_MAGFILTER, filter);
-    g_device->SetTextureStageState(0, D3DTSS_MINFILTER, filter);
     g_device->SetTextureStageState(0, D3DTSS_MIPFILTER, D3DTEXF_NONE);
     g_device->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_TEX1);
     return true;
@@ -129,7 +135,6 @@ bool initRenderer()
     g_sdlTexture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING,
                                      g_srcW, g_srcH);
     if (!g_sdlTexture) return false;
-    SDL_SetTextureScaleMode(g_sdlTexture, integerScale() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
     return true;
 }
 
@@ -160,6 +165,10 @@ void presentD3D(const uint32_t* pixels)
         { x1, y1, 0.0f, 1.0f, u1,   v1   },
     };
 
+    const DWORD filter = g_sharp ? D3DTEXF_POINT : D3DTEXF_LINEAR;
+    g_device->SetTextureStageState(0, D3DTSS_MAGFILTER, filter);
+    g_device->SetTextureStageState(0, D3DTSS_MINFILTER, filter);
+
     g_device->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
     g_device->BeginScene();
     g_device->SetTexture(0, tex);
@@ -171,6 +180,7 @@ void presentD3D(const uint32_t* pixels)
 
 void presentRenderer(const uint32_t* pixels)
 {
+    SDL_SetTextureScaleMode(g_sdlTexture, g_sharp ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
     SDL_UpdateTexture(g_sdlTexture, NULL, pixels, g_srcW * 4);
     SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
     SDL_RenderClear(g_renderer);
@@ -215,6 +225,8 @@ int plat_video_init(int src_w, int src_h)
     if (!current) current = desktop;
     g_width = current ? current->w : mode.w;
     g_height = current ? current->h : mode.h;
+    g_wideScreen = g_height >= 720 || (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN);
+    g_progressive = (g_height == 720);
     computePicture();
 
     const bool d3d = initD3D();
@@ -223,11 +235,26 @@ int plat_video_init(int src_w, int src_h)
         plat_log("MM: no way to present: %s\n", SDL_GetError());
         return 0;
     }
-    SDL_snprintf(g_modeName, sizeof(g_modeName), "%dx%d (picture %dx%d, %s, %s)", g_width, g_height,
-                 (int)g_picture.w, (int)g_picture.h, integerScale() ? "sharp" : "filtered",
-                 d3d ? "Direct3D" : "SDL renderer");
-    plat_log("MM: video %s\n", g_modeName);
+    if (d3d)
+    {
+        D3DDISPLAYMODE dm;
+        g_device->GetDisplayMode(&dm);
+        g_progressive = (dm.Flags & D3DPRESENTFLAG_PROGRESSIVE) != 0;
+    }
+    plat_log("MM: video %dx%d%c, %s screen, %s\n", g_width, g_height, g_progressive ? 'p' : 'i',
+             g_wideScreen ? "16:9" : "4:3", d3d ? "Direct3D" : "SDL renderer");
+    plat_set_wide(0);
     return 1;
+}
+
+void plat_set_wide(int wide)
+{
+    g_stretch = wide != 0;
+    computePicture();
+    SDL_snprintf(g_modeName, sizeof(g_modeName), "%d%c %s: picture %dx%d %s", g_height,
+                 g_progressive ? 'p' : 'i', g_stretch ? "16:9" : "4:3", (int)g_picture.w,
+                 (int)g_picture.h, g_sharp ? "sharp" : "filtered");
+    plat_log("MM: %s\n", g_modeName);
 }
 
 void plat_present(const uint32_t* pixels)

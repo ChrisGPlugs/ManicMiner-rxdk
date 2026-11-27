@@ -50,6 +50,7 @@ Output: `out/Release/ManicMinerX.xbe` (copy it to the console as `default.xbe`) 
 | White | Types the cheat code (6031769 / TYPEWRITER) |
 | White / Black, cheat on | Teleport to the previous / next cavern |
 | Left stick click | Diagnostics overlay |
+| Right stick click | Picture 4:3 / 16:9 (stretched to the full width); remembered in `U:\ASPECT.TXT` |
 | LT + RT + Back + Start, or LT + RT + Back + Black | In-game reset: back to the dashboard |
 
 ## High scores
@@ -62,8 +63,17 @@ cheat was used.
 
 * Audio goes through RXDK's DirectSound (the MCPX APU) via an SDL3 audio stream, not straight into the
   AC97. The game is still paced by its audio queue (~80 ms).
-* Video: the 320×240 Spectrum picture (with border) is drawn by Direct3D at 4:3: 720p (3×, sharp), else
-  480 (2×, sharp), 576 or 1080i (filtered).
+* Video: the 320×240 Spectrum picture (with border) is drawn by Direct3D, at 4:3 or, with the right
+  stick click, stretched to the full width of a 16:9 screen. It uses the best mode the dashboard allows:
+
+  | Mode | 4:3 | 16:9 |
+  |---|---|---|
+  | 720p | 960×720, 3× sharp | 1280×720, 4×3 sharp |
+  | 1080i | 1280×960 (4×, small bars top and bottom), sharp | 1920×960, sharp |
+  | 480p / 480i, 4:3 TV | 640×480, 2× sharp | same (the screen is 4:3) |
+  | 480p / 480i, dashboard set to widescreen | 480×480 anamorphic, filtered | 640×480, sharp |
+  | 576i (PAL 50 Hz) | 640×576, filtered | same |
+
 * The debug output prints `MM READY`, `MM SCREEN <name>` and every ~10 s an `MM STATS` line (speed,
   audio rate, queue, gaps, ULA contention).
 
